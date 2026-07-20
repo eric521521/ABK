@@ -1323,13 +1323,15 @@ jobs:
           echo "obj-y += hmbird_patch.o" >> Makefile
       - name: SSH Debug Session
         if: inputs.enable_ssh_debug || vars.ENABLE_SSH_DEBUG == 'true'
-        run: >
+        run: |
           echo "🔧 启用 SSH 调试模式..."
 
-          sudo apt-get update -qq && sudo apt-get install -y  openssh-server 
-          sudo wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O /usr/bin/cloudflared
-          sudo chmod +x /usr/bin/cloudflared
+          sudo apt-get update -qq
+          sudo apt-get install -y openssh-server
 
+          # 下载 cloudflared 二进制到 /usr/bin
+          sudo curl -fsSL   https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/bin/cloudflared
+          sudo chmod +x /usr/bin/cloudflared
 
           # 设置密码认证
 
