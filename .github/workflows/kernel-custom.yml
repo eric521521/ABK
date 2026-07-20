@@ -7,7 +7,6 @@ permissions:
 on:
   workflow_dispatch:
     inputs:
-      # ==================== 内核版本配置 ====================
       android_version:
         description: "Android 版本"
         required: true
@@ -45,8 +44,6 @@ on:
         required: false
         type: string
         default: "r11"
-
-      # ==================== KernelSU 配置 ====================
       kernelsu_variant:
         description: "KernelSU 变体"
         required: true
@@ -67,8 +64,6 @@ on:
           - Latest(最新)
           - Custom(自定义)
         default: Stable(标准)
-
-      # ==================== 可选配置 ====================
       custom_ref:
         description: "自定义引用 (仅在KSU分支为'Custom(自定义)'时使用)"
         required: false
@@ -82,21 +77,16 @@ on:
         required: false
         type: string
         default: "Sun Dec 01 08:10:00 UTC 2024"
-
-      # ==================== 虚拟化支持配置 ====================
       virtualization_support:
-        description: "虚拟化支持 (5.10~6.6: 槽位补丁, 6.12: 开/关)"
+        description: "虚拟化支持"
         required: false
         type: choice
         options:
           - "off"
-          - "on"
           - "678"
           - "123"
           - "345"
         default: "off"
-
-      # ==================== 功能开关 ====================
       use_zram:
         description: "启用 ZRAM 增强算法"
         required: true
@@ -142,37 +132,36 @@ on:
         required: false
         type: boolean
         default: false
-
-      # ==================== ZRAM 扩展选项 ====================
       zram_full_algo:
-        description: "启用 ZRAM 完整算法支持（6.12 自动跳过 legacy LZ4K/LZ4KD/LZ4K_OPLUS）"
+        description: "启用 ZRAM 完整算法支持"
         required: false
         type: boolean
         default: false
       zram_extra_algos:
-        description: "自定义 ZRAM 算法（逗号分隔，如 lzo,lz4,deflate,zstd；6.12 会忽略 lz4k/lz4kd/lz4k_oplus）"
+        description: "自定义 ZRAM 算法"
         required: false
         type: string
         default: ""
-
-      # ==================== KPM 扩展选项 ====================
       kpm_password:
-        description: "自定义 KPM 超级密码（留空=使用默认密码）"
+        description: "自定义 KPM 超级密码"
         required: false
         type: string
         default: ""
-
-      # ==================== 自定义外部模块 ====================
       custom_external_modules:
-        description: "自定义外部模块（兼容旧 repo;stage，也支持 module:repo;stage 与 set:repo#child;stage，用 | 分隔）"
+        description: "自定义外部模块"
         required: false
         type: string
         default: ""
       custom_kernel_options:
-        description: "自定义内核选项（每行一条 Kconfig/defconfig 片段）"
+        description: "自定义内核选项"
         required: false
         type: string
         default: ""
+      enable_ssh_debug:
+        description: "启用 SSH 远程调试（编译前暂停，允许手动修改源码）"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build-custom-kernel:
@@ -205,6 +194,7 @@ jobs:
       kpm_password: ${{ inputs.kpm_password || '' }}
       custom_external_modules: ${{ inputs.custom_external_modules || '' }}
       custom_kernel_options: ${{ inputs.custom_kernel_options || '' }}
+      enable_ssh_debug: ${{ inputs.enable_ssh_debug }}
 
   get-ksu-manager:
     uses: ./.github/workflows/get-manager.yml
