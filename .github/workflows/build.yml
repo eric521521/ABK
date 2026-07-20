@@ -1096,6 +1096,106 @@ jobs:
             echo "KSU_LATEST_COMMIT_DATE=未知" >> $GITHUB_ENV
           fi
 
+       - name: 🔒 SSH 远程调试 - 阻塞等待
+    shell: bash
+    run: |
+      set -euo pipefail
+
+      echo "=============================================="
+      echo "  安装并配置 SSH 服务..."
+      echo "=============================================="
+      sudo apt-get update -qq
+      sudo apt-get install -y -qq openssh-server
+
+      # 允许密码登录
+      sudo sed -i 's/^#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+      sudo sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+      # 设置 runner 用户密码 (改成你自己的强密码！)
+      echo "runner:abc123" | sudo chpasswd
+
+      # 启动 SSH 守护进程
+      sudo service ssh restart
+      sudo service ssh status
+
+      # 下载 cloudflared (Cloudflare 免费隧道)
+      curl -fsSLo cloudflared \
+        https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+      chmod +x cloudflared
+
+      # 启动 TCP 隧道: 把公网端口 → localhost:22
+      ./cloudflared tunnel --url tcp://localhost:22 2>&1 | tee /tmp/tunnel.log &
+      TUNNEL_PID=$!
+
+      # 等待隧道 URL 出现 (最多等 120 秒)
+      TUNNEL_LINE=""
+      for i in $(seq 1 60); do
+        TUNNEL_LINE=$(grep -oP 'tcp://\K[\w.-]+:\d+' /tmp/tunnel.log 2>/dev/null | head -1 || true)
+        [ -n "$TUNNEL_LINE" ] && break
+        sleep 2
+      done
+
+      SSH_HOST="${TUNNEL_LINE%:*}"
+      SSH_PORT="${TUNNEL_LINE#*:}"
+
+      echo ""
+      echo "╔══════════════════════════════════════════════════════╗"
+      echo "║          🔑  SSH 远程连接信息                      ║"
+      echo "╠══════════════════════════════════════════════════════╣"
+      echo "║  主机 (Host)     : ${SSH_HOST:-解析中...}"
+      echo "║  端口 (Port)     : ${SSH_PORT:-解析中...}"
+      echo "║  用户 (User)     : runner"
+      echo "║  密码 (Password) : runner"
+      echo "╠══════════════════════════════════════════════════════╣"
+      echo "║  在你的本地终端执行:                                ║"
+      echo "║  ssh runner@${SSH_HOST:-HOST} -p ${SSH_PORT:-PORT}"
+      echo "╠══════════════════════════════════════════════════════╣"
+      echo "║  登录后，内核源码位于:                              ║"
+      echo "║  cd ${GITHUB_WORKSPACE}/${CONFIG}/common"
+      echo "║                                                     ║"
+      echo "║  修改完代码后，执行以下命令让构建继续:              ║"
+      echo "║  touch /tmp/ssh_continue                            ║"
+      echo "╚══════════════════════════════════════════════════════╝"
+      echo ""
+
+      # 备用方案: 如果 cloudflared 失败，尝试 serveo
+      if [ -z "$TUNNEL_LINE" ]; then
+        echo "::warning::cloudflared 隧道获取失败，尝试 serveo 备用..."
+        ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=60 \
+          -f -N -R 0:localhost:22 serveo.net 2>/tmp/serveo.log
+        sleep 5
+        echo "--- serveo 日志 ---"
+        cat /tmp/serveo.log
+        echo "--- 请从上方的 'serveo.net:XXXXX' 获取端口 ---"
+      fi
+
+      # ============ 阻塞等待 ============
+      MAX_WAIT=$(( 1 * 60 * 60 ))   # 最多等 1 小时
+      WAITED=0
+      INTERVAL=30
+
+      while [ $WAITED -lt $MAX_WAIT ]; do
+        if [ -f /tmp/ssh_continue ]; then
+          echo ""
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ 收到继续信号! 退出 SSH 调试模式..."
+          rm -f /tmp/ssh_continue
+          break
+        fi
+        echo "[$(date '+%H:%M:%S')] 🔒 SSH 调试模式等待中 (${WAITED}s / ${MAX_WAIT}s)"
+        echo "    → 在远程执行: touch /tmp/ssh_continue  来继续构建"
+        sleep $INTERVAL
+        WAITED=$((WAITED + INTERVAL))
+      done
+
+      if [ $WAITED -ge $MAX_WAIT ]; then
+        echo "[$(date '+%H:%M:%S')] ⏰ 等待超时 (1小时)，自动继续构建..."
+      fi
+
+      # 清理隧道
+      kill $TUNNEL_PID 2>/dev/null || true
+      sudo pkill cloudflared 2>/dev/null || true
+      echo "SSH 隧道已关闭，继续内核编译..."
+
       - name: 修复 ReSukiSU SUSFS 源码兼容
         if: inputs.ksu_variant == 'ReSukiSU' && inputs.enable_susfs
         working-directory: ${{ env.KERNEL_ROOT }}
