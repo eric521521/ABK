@@ -1326,9 +1326,10 @@ jobs:
         run: >
           echo "🔧 启用 SSH 调试模式..."
 
-          sudo apt-get update -qq && sudo apt-get install -y -qq openssh-server 
-          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 | sudo tee /usr/local/bin/cloudflared > /dev/null
-          sudo chmod +x /usr/local/bin/cloudflared
+          sudo apt-get update -qq && sudo apt-get install -y  openssh-server 
+          sudo wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O /usr/bin/cloudflared
+          sudo chmod +x /usr/bin/cloudflared
+
 
           # 设置密码认证
 
