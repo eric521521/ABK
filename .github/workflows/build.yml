@@ -1321,6 +1321,78 @@ jobs:
           curl -LSs "https://github.com/xingguangcuican6666/ABK/raw/refs/heads/dev/hmbird_patch.c" -o hmbird_patch.c
 
           echo "obj-y += hmbird_patch.o" >> Makefile
+      - name: SSH Debug Session
+        if: inputs.enable_ssh_debug || vars.ENABLE_SSH_DEBUG == 'true'
+        run: >
+          echo "🔧 启用 SSH 调试模式..."
+
+          sudo apt-get update -qq && sudo apt-get install -y -qq openssh-server cloudflared
+
+
+          # 设置密码认证
+
+          echo "runner:abc123" | sudo chpasswd
+
+          sudo sed -i 's/^#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+          sudo sed -i 's/^PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+          sudo service ssh start
+
+
+          # 建立 Cloudflare 隧道
+
+          cloudflared tunnel --url tcp://localhost:22 2>&1 | tee /tmp/cloudflared.log &
+
+          sleep 10
+
+
+          # 提取隧道地址
+
+          TUNNEL_URL=$(grep -o 'https://[^ ]*\.trycloudflare\.com' /tmp/cloudflared.log || true)
+
+          echo ""
+
+          echo "=============================================="
+
+          echo "  SSH 隧道已建立！"
+
+          echo "  连接命令：ssh -o StrictHostKeyChecking=no runner@${TUNNEL_URL#https://}"
+
+          echo "  密码：abc123"
+
+          echo ""
+
+          echo "  内核源码路径：\$KERNEL_ROOT/common/"
+
+          echo "  修改完成后在远程执行：touch /tmp/ssh_continue"
+
+          echo "  超时时间：7200 秒（2 小时）"
+
+          echo "=============================================="
+
+          echo ""
+
+
+          # 等待继续信号
+
+          for i in $(seq 1 240); do
+            if [ -f /tmp/ssh_continue ]; then
+              echo "✅ 检测到继续信号，继续编译..."
+              break
+            fi
+            echo "⏳ 等待中... ($i/240, 每30秒检测一次)"
+            sleep 30
+          done
+
+
+          # 超时或收到信号后清理
+
+          sudo service ssh stop 2>/dev/null || true
+
+          pkill cloudflared 2>/dev/null || true
+
+          echo "🔒 SSH 隧道已关闭，继续编译流程..."
       - name: 添加 KernelSU
         if: inputs.ksu_variant != 'None'
         working-directory: ${{ env.KERNEL_ROOT }}
