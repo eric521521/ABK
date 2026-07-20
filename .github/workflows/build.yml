@@ -1324,61 +1324,29 @@ jobs:
       - name: SSH Debug Session
         if: inputs.enable_ssh_debug || vars.ENABLE_SSH_DEBUG == 'true'
         run: |
-          echo "🔧 启用 SSH 调试模式..."
+          echo "🔧 启用 SSH 调试模式 (tmate)..."
 
           sudo apt-get update -qq
-          sudo apt-get install -y openssh-server
+          sudo apt-get install -y tmate
 
-          # 下载 cloudflared 二进制到 /usr/bin
-          sudo curl -fsSL   https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/bin/cloudflared
-          sudo chmod +x /usr/bin/cloudflared
+          tmate -S /tmp/tmate.sock new-session -d
+          tmate -S /tmp/tmate.sock wait tmate-ready
 
-          # 设置密码认证
-
-          echo "runner:abc123" | sudo chpasswd
-
-          sudo sed -i 's/^#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
-
-          sudo sed -i 's/^PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
-
-          sudo service ssh start
-
-
-          # 建立 Cloudflare 隧道
-
-          cloudflared tunnel --url tcp://localhost:22 2>&1 | tee /tmp/cloudflared.log &
-
-          sleep 10
-
-
-          # 提取隧道地址
-
-          TUNNEL_URL=$(grep -o 'https://[^ ]*\.trycloudflare\.com' /tmp/cloudflared.log || true)
+          TMATE_SSH=$(tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}')
+          TMATE_WEB=$(tmate -S /tmp/tmate.sock display -p '#{tmate_web}')
 
           echo ""
-
           echo "=============================================="
-
-          echo "  SSH 隧道已建立！"
-
-          echo "  连接命令：ssh -o StrictHostKeyChecking=no runner@${TUNNEL_URL#https://}"
-
-          echo "  密码：abc123"
-
+          echo "  tmate 会话已建立！"
           echo ""
-
-          echo "  内核源码路径：\$KERNEL_ROOT/common/"
-
-          echo "  修改完成后在远程执行：touch /tmp/ssh_continue"
-
-          echo "  超时时间：7200 秒（2 小时）"
-
+          echo "  SSH 连接: ${TMATE_SSH}"
+          echo "  Web 连接: ${TMATE_WEB}"
+          echo ""
+          echo "  内核源码路径: ${KERNEL_ROOT}/common/"
+          echo "  修改完成后在远程执行: touch /tmp/ssh_continue"
+          echo "  超时时间: 7200 秒（2 小时）"
           echo "=============================================="
-
           echo ""
-
-
-          # 等待继续信号
 
           for i in $(seq 1 240); do
             if [ -f /tmp/ssh_continue ]; then
@@ -1389,14 +1357,9 @@ jobs:
             sleep 30
           done
 
+          tmate -S /tmp/tmate.sock kill-session 2>/dev/null || true
+          echo "🔒 tmate 会话已关闭，继续编译流程..."
 
-          # 超时或收到信号后清理
-
-          sudo service ssh stop 2>/dev/null || true
-
-          pkill cloudflared 2>/dev/null || true
-
-          echo "🔒 SSH 隧道已关闭，继续编译流程..."
       - name: 添加 KernelSU
         if: inputs.ksu_variant != 'None'
         working-directory: ${{ env.KERNEL_ROOT }}
